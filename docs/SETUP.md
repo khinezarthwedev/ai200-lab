@@ -45,9 +45,12 @@ names and endpoints (nothing secret).
 
 ## 4. Run the samples
 
-Easiest place: **Azure Cloud Shell** (you are already signed in).
+Easiest place: **Azure Cloud Shell**. Cloud Shell's automatic sign-in can NOT get tokens for
+Service Bus, Cosmos DB or App Configuration ("AudienceNotSupported"), so sign in once yourself:
 
 ```bash
+az login --use-device-code          # open the link, enter the code, pick your account
+az account set --subscription <your-subscription-id>
 git clone https://github.com/khinezarthwedev/ai200-lab.git
 cd ai200-lab/samples
 # upload lab.env with the Cloud Shell "Upload" button, then:
