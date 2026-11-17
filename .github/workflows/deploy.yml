@@ -152,7 +152,7 @@ jobs:
       - name: Write lab.env (resource names/endpoints only - nothing secret)
         run: |
           az deployment group show -g "$RG" -n main --query properties.outputs -o json \
-            | jq -r 'to_entries[] | "\(.key)=\(.value.value)"' > lab.env
+            | jq -r 'to_entries[] | "\(.key | ascii_upcase)=\(.value.value)"' > lab.env
           cat lab.env
 
       - uses: actions/upload-artifact@v4

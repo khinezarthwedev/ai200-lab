@@ -16,7 +16,8 @@ def load_env(path: str = "lab.env") -> None:
             for line in candidate.read_text().splitlines():
                 if "=" in line and not line.startswith("#"):
                     key, value = line.split("=", 1)
-                    os.environ.setdefault(key.strip(), value.strip())
+                    # Azure returns output names in mixed case (e.g. "servicebuS_FQDN"): normalise them.
+                    os.environ.setdefault(key.strip().upper(), value.strip())
             return
     raise SystemExit("lab.env not found. Download it from the 'deploy' workflow run (see docs/SETUP.md).")
 
