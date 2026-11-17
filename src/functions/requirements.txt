@@ -1,0 +1,5 @@
+azure-functions
+azure-identity>=1.19
+azure-cosmos>=4.9
+azure-servicebus>=7.13
+azure-monitor-opentelemetry>=1.6

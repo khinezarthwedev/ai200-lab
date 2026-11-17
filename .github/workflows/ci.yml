@@ -1,0 +1,27 @@
+# Validate on every push / pull request: images must build and templates must compile BEFORE merging.
+name: ci
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile Bicep
+        run: az bicep build --file infra/main.bicep --stdout > /dev/null
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Python syntax check
+        run: python -m compileall -q src samples
+      - name: Docker build (no push) - proves the images build before merge
+        run: |
+          docker build -t search-api:ci src/search-api
+          docker build -t webhook:ci src/webhook

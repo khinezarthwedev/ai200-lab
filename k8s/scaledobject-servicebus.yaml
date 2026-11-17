@@ -1,0 +1,25 @@
+# KEDA on AKS (add-on enabled in infra/modules/aks.bicep): scale on Service Bus queue length,
+# down to ZERO replicas when the queue is empty (batch jobs: cost matters more than cold start).
+# Needs workload identity set up for the KEDA operator; see docs/MODULES.md (AKS section).
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: search-api-sb
+spec:
+  scaleTargetRef: { name: search-api }
+  minReplicaCount: 0
+  maxReplicaCount: 5
+  triggers:
+    - type: azure-servicebus
+      metadata:
+        namespace: <SERVICEBUS_NAME>
+        queueName: index-updates
+        messageCount: "5"        # azure-servicebus scaler uses messageCount (azure-queue uses queueLength)
+      authenticationRef: { name: keda-sb-auth }
+---
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: keda-sb-auth
+spec:
+  podIdentity: { provider: azure-workload }

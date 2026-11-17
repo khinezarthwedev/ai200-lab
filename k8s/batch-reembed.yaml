@@ -1,0 +1,43 @@
+# OPTIONAL (deployAks=true). Batch re-embedding worker on AKS.
+# Apply: az aks get-credentials -g <rg> -n <aks>; replace <ACR_LOGIN_SERVER>; kubectl apply -f k8s/
+# Exam topics: Deployment/Service manifests, liveness vs readiness probes, troubleshooting:
+#   kubectl get events --sort-by=.lastTimestamp     -> "Readiness probe failed", image pull errors
+#   kubectl describe pod <pod>                       -> state, restarts, events for ONE pod
+#   kubectl logs <pod> --previous                    -> why the container crashed (CrashLoopBackOff)
+#   kubectl get endpoints search-api                 -> is the Service connected to ready pods?
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: search-api
+  labels: { app: search-api }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: search-api }
+  template:
+    metadata:
+      labels: { app: search-api }
+    spec:
+      containers:
+        - name: search-api
+          image: <ACR_LOGIN_SERVER>/search-api:latest
+          ports: [ { containerPort: 8000 } ]
+          env:
+            - { name: APP_ENV, value: "test" }
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+          livenessProbe:            # fails -> container RESTARTED
+            httpGet: { path: /healthz, port: 8000 }
+            periodSeconds: 20
+          readinessProbe:           # fails -> removed from Service endpoints, NOT restarted
+            httpGet: { path: /ready, port: 8000 }
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: search-api
+spec:
+  selector: { app: search-api }   # a wrong selector = empty endpoints = "service can't reach service"
+  ports: [ { port: 80, targetPort: 8000 } ]

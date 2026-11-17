@@ -1,0 +1,51 @@
+// KQL queries for the lab. Run them in Application Insights > Logs, or the Log Analytics workspace.
+// Workspace-based Application Insights tables: AppRequests, AppDependencies, AppTraces, AppExceptions.
+// (In the classic App Insights "Logs" blade the same data is called requests, dependencies, traces, exceptions.)
+
+// 1) Latency spikes: p95 request duration per 5 minutes, per service
+AppRequests
+| where TimeGenerated > ago(1h)
+| summarize p95_ms = percentile(DurationMs, 95), count() by bin(TimeGenerated, 5m), AppRoleName
+| render timechart
+
+// 2) Slow or failing dependencies (Cosmos DB, Redis, Service Bus, HTTP calls)
+AppDependencies
+| where TimeGenerated > ago(1h)
+| summarize avg_ms = avg(DurationMs), failures = countif(Success == false) by Type, Target
+| order by failures desc, avg_ms desc
+
+// 3) Trace correlation: everything that happened for ONE request across all services
+let op = toscalar(AppRequests | where TimeGenerated > ago(1h) | top 1 by DurationMs desc | project OperationId);
+union AppRequests, AppDependencies, AppTraces, AppExceptions
+| where OperationId == op
+| project TimeGenerated, Type, AppRoleName, Name, DurationMs, Message
+| order by TimeGenerated asc
+
+// 4) Exceptions grouped by type
+AppExceptions
+| where TimeGenerated > ago(24h)
+| summarize count() by ProblemId, AppRoleName
+| order by count_ desc
+
+// 5) Container Apps console logs (what your app printed)
+ContainerAppConsoleLogs_CL
+| where TimeGenerated > ago(30m)
+| project TimeGenerated, ContainerAppName_s, RevisionName_s, Log_s
+| order by TimeGenerated desc
+
+// 6) Container Apps system logs: scaling, revision and probe events
+ContainerAppSystemLogs_CL
+| where TimeGenerated > ago(1h)
+| project TimeGenerated, ContainerAppName_s, Reason_s, Log_s
+| order by TimeGenerated desc
+
+// 7) AKS (Container Insights): pods that keep restarting
+KubePodInventory
+| where TimeGenerated > ago(1h)
+| summarize restarts = max(ContainerRestartCount) by Name, Namespace
+| where restarts > 0
+
+// 8) AKS events, e.g. readiness probe failures
+KubeEvents
+| where TimeGenerated > ago(1h) and Reason in ("Unhealthy", "BackOff", "Failed")
+| project TimeGenerated, Name, Reason, Message

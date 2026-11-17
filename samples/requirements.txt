@@ -1,0 +1,12 @@
+azure-identity>=1.19
+azure-servicebus>=7.13
+azure-eventgrid>=4.20
+azure-appconfiguration>=1.7
+azure-appconfiguration-provider>=2.0
+azure-cosmos>=4.9
+azure-keyvault-secrets>=4.9
+azure-storage-blob>=12.23
+psycopg[binary]>=3.2
+pgvector>=0.3
+redis>=5.2
+redis-entraid>=1.0

@@ -1,0 +1,39 @@
+# Delete EVERYTHING in the lab resource group so you stop paying. Type DELETE to confirm.
+name: teardown
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type DELETE to remove all lab resources"
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  teardown:
+    if: inputs.confirm == 'DELETE'
+    runs-on: ubuntu-latest
+    environment: lab
+    steps:
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Delete every resource in the group (the group itself stays, with its role assignments)
+        env:
+          RG: ${{ vars.AZURE_RESOURCE_GROUP }}
+        run: |
+          KV=$(az keyvault list -g "$RG" --query "[0].name" -o tsv)
+          # Complete mode + an empty template = delete all resources but keep the resource group,
+          # so the GitHub sign-in (scoped to this group) keeps working for the next deploy.
+          echo '{"$schema":"https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#","contentVersion":"1.0.0.0","resources":[]}' > empty.json
+          az deployment group create -g "$RG" -n teardown --mode Complete --template-file empty.json --output none
+          # Key Vault is soft-deleted; purge it so the same name can be reused next time.
+          if [ -n "$KV" ]; then az keyvault purge --name "$KV" || echo "purge skipped"; fi
+          az resource list -g "$RG" -o table

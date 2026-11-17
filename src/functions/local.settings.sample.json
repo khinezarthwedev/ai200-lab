@@ -1,0 +1,11 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "FUNCTIONS_WORKER_RUNTIME": "python",
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "ServiceBusConnection__fullyQualifiedNamespace": "<sb-name>.servicebus.windows.net",
+    "CosmosConnection__accountEndpoint": "https://<cosmos-name>.documents.azure.com:443/",
+    "ConfigStorage__blobServiceUri": "https://<storage-name>.blob.core.windows.net/",
+    "SERVICEBUS_FQDN": "<sb-name>.servicebus.windows.net"
+  }
+}

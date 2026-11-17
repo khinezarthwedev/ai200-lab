@@ -1,0 +1,161 @@
+# Deploy the lab with Bicep through an automated, version-controlled pipeline (Proseware: no local or
+# command-line deployments). Signs in to Azure with OpenID Connect (federated credential): NO secret stored.
+name: deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      messaging:
+        description: "Service Bus + Event Grid (Standard: ~USD 10/month)"
+        type: boolean
+        default: true
+      data:
+        description: "Cosmos DB serverless (pay per use, near zero when idle)"
+        type: boolean
+        default: true
+      postgres:
+        description: "PostgreSQL B1ms + pgvector (~USD 20/month while it exists)"
+        type: boolean
+        default: false
+      redis:
+        description: "Azure Managed Redis B0 (check pricing; delete when done)"
+        type: boolean
+        default: false
+      containers:
+        description: "Container Apps search API + App Service B1 webhook (~USD 15-30/month)"
+        type: boolean
+        default: false
+      functions:
+        description: "Function app (Flex Consumption, pay per execution)"
+        type: boolean
+        default: false
+      aks:
+        description: "AKS 1 node (EXPENSIVE per hour - delete right after practice)"
+        type: boolean
+        default: false
+      serviceBusSku:
+        description: "Premium is only needed for Service Bus -> Event Grid (Q86). Hundreds of USD/month!"
+        type: choice
+        options: [ Standard, Premium ]
+        default: Standard
+      appEnv:
+        description: "App Configuration label the apps load"
+        type: choice
+        options: [ test, staging, production ]
+        default: test
+      clientIp:
+        description: "Your public IP for PostgreSQL firewall (optional)"
+        type: string
+        default: ""
+
+permissions:
+  id-token: write   # required for OIDC sign-in
+  contents: read
+
+env:
+  RG: ${{ vars.AZURE_RESOURCE_GROUP }}
+  LOCATION: ${{ vars.AZURE_LOCATION }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: lab
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sign in to Azure (OIDC, no client secret)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Generate a PostgreSQL password (stored only in Key Vault by Bicep)
+        id: pg
+        run: |
+          PW="Pg$(openssl rand -hex 16)!"
+          echo "::add-mask::$PW"
+          echo "password=$PW" >> "$GITHUB_OUTPUT"
+
+      - name: "Phase 1: deploy infrastructure (Bicep)"
+        run: |
+          az deployment group create \
+            --resource-group "$RG" \
+            --name main \
+            --template-file infra/main.bicep \
+            --parameters \
+              deployerPrincipalId="${{ vars.AZURE_DEPLOYER_OBJECT_ID }}" \
+              userPrincipalId="${{ vars.AZURE_USER_OBJECT_ID }}" \
+              deployMessaging=${{ inputs.messaging }} \
+              deployData=${{ inputs.data }} \
+              deployPostgres=${{ inputs.postgres }} \
+              deployRedis=${{ inputs.redis }} \
+              deployContainers=false \
+              deployFunctions=${{ inputs.functions }} \
+              deployAks=${{ inputs.aks }} \
+              serviceBusSku=${{ inputs.serviceBusSku }} \
+              postgresAdminPassword="${{ steps.pg.outputs.password }}" \
+              clientIp="${{ inputs.clientIp }}" \
+              appEnv=${{ inputs.appEnv }} \
+            --output none
+
+      - name: "Build images in ACR with a QUICK TASK (az acr build: no local Docker needed)"
+        if: inputs.containers
+        run: |
+          ACR=$(az deployment group show -g "$RG" -n main --query properties.outputs.ACR_NAME.value -o tsv)
+          TAG=${GITHUB_SHA::7}
+          az acr build --registry "$ACR" --image search-api:$TAG --image search-api:latest src/search-api
+          az acr build --registry "$ACR" --image webhook:$TAG --image webhook:latest src/webhook
+          echo "ACR_SERVER=$(az acr show -n "$ACR" --query loginServer -o tsv)" >> "$GITHUB_ENV"
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+
+      - name: "Phase 2: deploy Container Apps + App Service with the new images"
+        if: inputs.containers
+        run: |
+          az deployment group create \
+            --resource-group "$RG" \
+            --name main \
+            --template-file infra/main.bicep \
+            --parameters \
+              deployerPrincipalId="${{ vars.AZURE_DEPLOYER_OBJECT_ID }}" \
+              userPrincipalId="${{ vars.AZURE_USER_OBJECT_ID }}" \
+              deployMessaging=${{ inputs.messaging }} \
+              deployData=${{ inputs.data }} \
+              deployPostgres=${{ inputs.postgres }} \
+              deployRedis=${{ inputs.redis }} \
+              deployContainers=true \
+              deployFunctions=${{ inputs.functions }} \
+              deployAks=${{ inputs.aks }} \
+              serviceBusSku=${{ inputs.serviceBusSku }} \
+              postgresAdminPassword="${{ steps.pg.outputs.password }}" \
+              clientIp="${{ inputs.clientIp }}" \
+              appEnv=${{ inputs.appEnv }} \
+              useAcrImages=true \
+              searchApiImage="$ACR_SERVER/search-api:$TAG" \
+              webhookImage="$ACR_SERVER/webhook:$TAG" \
+            --output none
+
+      - name: Read deployment outputs
+        if: inputs.functions
+        run: |
+          echo "FUNC_APP=$(az deployment group show -g "$RG" -n main --query properties.outputs.FUNCTION_APP_NAME.value -o tsv)" >> "$GITHUB_ENV"
+
+      - name: Deploy the Function app code
+        if: inputs.functions
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ env.FUNC_APP }}
+          package: src/functions
+          sku: flexconsumption
+          remote-build: true
+
+      - name: Write lab.env (resource names/endpoints only - nothing secret)
+        run: |
+          az deployment group show -g "$RG" -n main --query properties.outputs -o json \
+            | jq -r 'to_entries[] | "\(.key)=\(.value.value)"' > lab.env
+          cat lab.env
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lab-env
+          path: lab.env
