@@ -7,7 +7,8 @@ from lab.env, which the deploy workflow publishes as a downloadable artifact (se
 import os
 from pathlib import Path
 
-from azure.identity import DefaultAzureCredential
+from azure.core.credentials import TokenCredential
+from azure.identity import AzureCliCredential, ChainedTokenCredential, DefaultAzureCredential
 
 
 def load_env(path: str = "lab.env") -> None:
@@ -33,11 +34,24 @@ def need(name: str) -> str:
     return value
 
 
-def credential() -> DefaultAzureCredential:
-    # Signs in as YOU:
-    #  - in Azure Cloud Shell: through Cloud Shell's built-in identity endpoint
-    #  - on your PC: through `az login` (Azure CLI)
-    # In the deployed apps the same class picks up the user-assigned managed identity instead.
+def in_cloud_shell() -> bool:
+    return bool(os.getenv("ACC_CLOUD")) or os.getenv("AZUREPS_HOST_ENVIRONMENT", "").startswith("cloud-shell")
+
+
+def credential() -> TokenCredential:
+    """Signs in as YOU.
+
+    Azure Cloud Shell: through the Azure CLI login that Cloud Shell already has. (Cloud Shell's
+    built-in identity endpoint only gives tokens for a few services; for Service Bus it fails with
+    'AudienceNotSupported', so it is skipped there.)
+    Your own PC: DefaultAzureCredential finds your `az login`.
+    In the deployed apps the same DefaultAzureCredential picks up the managed identity instead.
+    """
+    if in_cloud_shell():
+        return ChainedTokenCredential(
+            AzureCliCredential(process_timeout=60),
+            DefaultAzureCredential(exclude_managed_identity_credential=True, process_timeout=60),
+        )
     return DefaultAzureCredential(process_timeout=60)
 
 
