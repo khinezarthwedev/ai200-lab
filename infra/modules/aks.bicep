@@ -53,7 +53,7 @@ resource kubeletAcrPull 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   properties: {
     principalId: aks.properties.identityProfile.kubeletidentity.objectId
     principalType: 'ServicePrincipal'
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dff-4ed7-4c3b-9b02-e4ae9f6bbd6d')
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d')
   }
 }
 

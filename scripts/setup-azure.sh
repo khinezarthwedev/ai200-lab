@@ -40,6 +40,16 @@ az ad app federated-credential create --id "$APP_ID" --parameters "{
   \"audiences\": [\"api://AzureADTokenExchange\"]
 }" --output none 2>/dev/null || echo "   (federated credential already exists)"
 
+# GitHub may send an ID-based subject instead (owner@ownerId/repo@repoId). Trust that form too.
+OWNER_ID=$(curl -s "https://api.github.com/users/${REPO%%/*}" | python3 -c "import sys,json;print(json.load(sys.stdin)['id'])")
+REPO_ID=$(curl -s "https://api.github.com/repos/${REPO}" | python3 -c "import sys,json;print(json.load(sys.stdin)['id'])")
+az ad app federated-credential create --id "$APP_ID" --parameters "{
+  \"name\": \"github-lab-environment-ids\",
+  \"issuer\": \"https://token.actions.githubusercontent.com\",
+  \"subject\": \"repo:${REPO%%/*}@${OWNER_ID}/${REPO##*/}@${REPO_ID}:environment:lab\",
+  \"audiences\": [\"api://AzureADTokenExchange\"]
+}" --output none 2>/dev/null || echo "   (ID-based federated credential already exists)"
+
 echo "== 5. Least-privilege roles, scoped to the resource group only"
 SCOPE="/subscriptions/$SUB/resourceGroups/$RG"
 # Contributor: create resources. RBAC Administrator: create the role assignments in the Bicep files.

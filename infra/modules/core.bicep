@@ -13,7 +13,7 @@ param tags object
 
 // ---------- Built-in role definition IDs (least privilege) ----------
 var roles = {
-  acrPull: '7f951dff-4ed7-4c3b-9b02-e4ae9f6bbd6d'
+  acrPull: '7f951dda-4ed3-4680-a7ca-43fe172d538d'
   keyVaultSecretsUser: '4633458b-17de-408a-b874-0445c86b69e6'
   keyVaultSecretsOfficer: 'b86a8fe4-44ce-4948-aee5-eccb2c155cd7'
   appConfigDataReader: '516239f1-63e1-4d78-a4de-a74fb236a071'
